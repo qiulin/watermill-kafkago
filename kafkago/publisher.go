@@ -6,10 +6,13 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/pkg/errors"
 	"github.com/segmentio/kafka-go"
+	"net"
+	"strconv"
 )
 
 type PublisherConfig struct {
-	//Writer *kafka.Writer
+	Writer *kafka.Writer
+
 	Brokers []string
 
 	Async bool
@@ -33,7 +36,10 @@ func (c *PublisherConfig) Validate() error {
 }
 
 func NewPublisher(config PublisherConfig, logger watermill.LoggerAdapter) message.Publisher {
-	writer := NewWriter(config)
+	var writer = config.Writer
+	if writer == nil {
+		writer = newWriter(config)
+	}
 	return &Publisher{
 		config: config,
 		writer: writer,
@@ -41,22 +47,16 @@ func NewPublisher(config PublisherConfig, logger watermill.LoggerAdapter) messag
 	}
 }
 
-func NewWriter(config PublisherConfig) *kafka.Writer {
+func newWriter(config PublisherConfig) *kafka.Writer {
+
 	writer := &kafka.Writer{
-		Addr:     kafka.TCP(config.Brokers...),
-		Balancer: &kafka.LeastBytes{},
-		Async:    config.Async,
+		Addr:                   kafka.TCP(config.Brokers...),
+		Balancer:               &kafka.LeastBytes{},
+		Async:                  config.Async,
+		AllowAutoTopicCreation: true,
 	}
-	return writer
-}
 
-func NewPublisherWithWriter(config PublisherConfig, writer *kafka.Writer, logger watermill.LoggerAdapter) message.Publisher {
-	return &Publisher{
-		config: config,
-		writer: writer,
-		logger: logger,
-		closed: false,
-	}
+	return writer
 }
 
 type Publisher struct {
@@ -67,13 +67,53 @@ type Publisher struct {
 	closed bool
 }
 
+func (p *Publisher) createTopic(topic string) error {
+	addr := p.config.Brokers[0]
+	logFields := watermill.LogFields{
+		"addr":  addr,
+		"topic": topic,
+	}
+	p.logger.Trace("Creating kafka topic", logFields)
+	conn, err := kafka.Dial("tcp", addr)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	ctrl, err := conn.Controller()
+	if err != nil {
+		return err
+	}
+	logFields.Add(watermill.LogFields{"ctrl_host": ctrl.Host, "ctrl_port": ctrl.Port})
+	p.logger.Trace("Dial kafka control conn", logFields)
+	ctrlConn, err := kafka.Dial("tcp", net.JoinHostPort(ctrl.Host, strconv.Itoa(ctrl.Port)))
+	if err != nil {
+		return err
+	}
+	defer ctrlConn.Close()
+	err = ctrlConn.CreateTopics(kafka.TopicConfig{
+		Topic:             topic,
+		NumPartitions:     1,
+		ReplicationFactor: 1,
+	})
+	if err != nil {
+		return err
+	}
+	p.logger.Trace("Created kafka topic", logFields)
+	return nil
+}
+
 func (p *Publisher) Publish(topic string, msgs ...*message.Message) error {
-	if !p.closed {
+	if p.closed {
 		return errors.New("publisher closed")
 	}
 
 	logFields := make(watermill.LogFields, 4)
 	logFields["topic"] = topic
+
+	//if err := p.createTopic(topic); err != nil {
+	//	p.logger.Error("Auto create topic error", err, logFields)
+	//	return err
+	//}
 
 	for _, msg := range msgs {
 		logFields["message_uuid"] = msg.UUID
