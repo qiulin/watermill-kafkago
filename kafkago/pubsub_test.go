@@ -6,11 +6,12 @@ import (
 	"github.com/ThreeDotsLabs/watermill/pubsub/tests"
 	"github.com/stretchr/testify/require"
 	"testing"
+	"time"
 )
 
 func kafkaBrokers() []string {
-	//return []string{"localhost:9091", "localhost:9092", "localhost:9093", "localhost:9094", "localhost:9095"}
-	return []string{"localhost:9091"}
+	return []string{"kafka1:9091", "kafka2:9092", "kafka3:9093", "kafka4:9094", "kafka5:9095"}
+	//return []string{"localhost:29092"}
 }
 
 func newPubSub(t *testing.T, marshaler MarshalerUnmarshaler, consumerGroup string) (message.Publisher, message.Subscriber) {
@@ -24,6 +25,8 @@ func newPubSub(t *testing.T, marshaler MarshalerUnmarshaler, consumerGroup strin
 		Async:       false,
 		Marshaler:   marshaler,
 		OTELEnabled: false,
+		Ipv4Only:    true,
+		Timeout:     100 * time.Second,
 	}, logger)
 
 	var subscriber message.Subscriber
@@ -53,4 +56,11 @@ func TestPublisherSubscriber(t *testing.T) {
 		Persistent:          true,
 	}
 	tests.TestPubSub(t, features, createPubSub, createPubSubWithConsumerGroup)
+}
+
+func TestPublish(t *testing.T) {
+	pub, _ := newPubSub(t, DefaultMarshaler{}, "test")
+	require.NotNil(t, pub)
+	err := pub.Publish("test", message.NewMessage(watermill.NewULID(), message.Payload("helloworld")))
+	require.NoError(t, err)
 }

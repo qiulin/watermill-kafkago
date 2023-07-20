@@ -8,6 +8,7 @@ import (
 	"github.com/segmentio/kafka-go"
 	"net"
 	"strconv"
+	"time"
 )
 
 type PublisherConfig struct {
@@ -22,6 +23,8 @@ type PublisherConfig struct {
 
 	// If true then each sent message will be wrapped with Opentelemetry tracing, provided by otelsarama.
 	OTELEnabled bool
+	Ipv4Only    bool
+	Timeout     time.Duration
 }
 
 func (c *PublisherConfig) Validate() error {
@@ -49,8 +52,14 @@ func NewPublisher(config PublisherConfig, logger watermill.LoggerAdapter) messag
 
 func newWriter(config PublisherConfig) *kafka.Writer {
 
+	var addr net.Addr
+	//if config.Ipv4Only {
+	//	addr = TCP4(config.Brokers...)
+	//} else {
+	addr = kafka.TCP(config.Brokers...)
+	//}
 	writer := &kafka.Writer{
-		Addr:                   kafka.TCP(config.Brokers...),
+		Addr:                   addr,
 		Balancer:               &kafka.LeastBytes{},
 		Async:                  config.Async,
 		AllowAutoTopicCreation: true,
@@ -115,6 +124,9 @@ func (p *Publisher) Publish(topic string, msgs ...*message.Message) error {
 	//	return err
 	//}
 
+	ctx, cancelFn := timeoutCtx(p.config.Timeout)
+	defer cancelFn()
+
 	for _, msg := range msgs {
 		logFields["message_uuid"] = msg.UUID
 		p.logger.Trace("Sending message to Kafka", logFields)
@@ -122,7 +134,6 @@ func (p *Publisher) Publish(topic string, msgs ...*message.Message) error {
 		if err != nil {
 			return errors.Wrapf(err, "cannot marshal message %s", msg.UUID)
 		}
-		ctx := context.Background()
 		if err := p.writer.WriteMessages(ctx, *kmsg); err != nil {
 			return errors.Wrapf(err, "cannot produce message %s", msg.UUID)
 		}
@@ -143,4 +154,12 @@ func (p *Publisher) Close() error {
 		return errors.Wrap(err, "cannot close Kafka writer")
 	}
 	return nil
+}
+
+func timeoutCtx(t time.Duration) (context.Context, context.CancelFunc) {
+	if t == 0 {
+		t = 5 * time.Second
+	}
+
+	return context.WithTimeout(context.Background(), t)
 }
