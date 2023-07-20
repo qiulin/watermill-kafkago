@@ -1,10 +1,13 @@
 package kafkago
 
 import (
+	"context"
+	"fmt"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/pubsub/tests"
 	"github.com/stretchr/testify/require"
+	"sync"
 	"testing"
 	"time"
 )
@@ -59,8 +62,23 @@ func TestPublisherSubscriber(t *testing.T) {
 }
 
 func TestPublish(t *testing.T) {
-	pub, _ := newPubSub(t, DefaultMarshaler{}, "test")
+	pub, sub := newPubSub(t, DefaultMarshaler{}, "test")
 	require.NotNil(t, pub)
-	err := pub.Publish("test", message.NewMessage(watermill.NewULID(), message.Payload("helloworld")))
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	ch, err := sub.Subscribe(context.Background(), "test")
 	require.NoError(t, err)
+	go func() {
+		for {
+			select {
+			case msg := <-ch:
+				fmt.Println(string(msg.Payload))
+				wg.Done()
+			}
+		}
+	}()
+	err = pub.Publish("test", message.NewMessage(watermill.NewULID(), message.Payload("helloworld")))
+	require.NoError(t, err)
+	wg.Wait()
+	fmt.Println("ok")
 }

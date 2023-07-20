@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
-	errors "github.com/pkg/errors"
+	"github.com/pkg/errors"
 	"github.com/segmentio/kafka-go"
 	"sync"
 	"time"
@@ -95,11 +95,14 @@ func (s *Subscriber) Subscribe(ctx context.Context, topic string) (<-chan *messa
 
 	outputCh := make(chan *message.Message)
 
-	err := s.consumeMessages(ctx, outputCh, logFields)
-	if err != nil {
-		s.subscriberWg.Done()
-		return nil, err
-	}
+	go func() {
+		err := s.consumeMessages(ctx, outputCh, logFields)
+		if err != nil {
+			s.logger.Error("consume messages failed", err, logFields)
+			s.subscriberWg.Done()
+			//return nil, err
+		}
+	}()
 
 	return outputCh, nil
 }
