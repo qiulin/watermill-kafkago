@@ -2,6 +2,7 @@ package kafkago
 
 import (
 	"context"
+	"fmt"
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/pkg/errors"
@@ -71,7 +72,7 @@ func newReader(config SubscriberConfig, topic string) *kafka.Reader {
 	return kafka.NewReader(kafka.ReaderConfig{
 		Brokers:               config.Brokers,
 		GroupID:               config.ConsumerGroup,
-		WatchPartitionChanges: false,
+		WatchPartitionChanges: true,
 		Topic:                 topic,
 	})
 }
@@ -133,6 +134,7 @@ func (s *Subscriber) consumeMessages(
 			}
 
 			if err := s.processMessage(ctx, &kmsg, output, logFields); err != nil {
+				s.logger.Error("process messages error", err, logFields)
 				return nil
 			}
 
@@ -141,6 +143,7 @@ func (s *Subscriber) consumeMessages(
 }
 
 func (s *Subscriber) processMessage(ctx context.Context, kmsg *kafka.Message, outputCh chan<- *message.Message, logFields watermill.LogFields) error {
+	s.logger.Trace(fmt.Sprintf("process message:%s", string(kmsg.Value)), logFields)
 	msg, err := s.config.Unmarshaler.Unmarshal(kmsg)
 	if err != nil {
 		return errors.Wrap(err, "message unmarshal failed")

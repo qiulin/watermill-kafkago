@@ -13,8 +13,8 @@ import (
 )
 
 func kafkaBrokers() []string {
-	return []string{"kafka1:9091", "kafka2:9092", "kafka3:9093", "kafka4:9094", "kafka5:9095"}
-	//return []string{"localhost:29092"}
+	//return []string{"kafka1:9091", "kafka2:9092", "kafka3:9093", "kafka4:9094", "kafka5:9095"}
+	return []string{"kafka1:9091"}
 }
 
 func newPubSub(t *testing.T, marshaler MarshalerUnmarshaler, consumerGroup string) (message.Publisher, message.Subscriber) {
