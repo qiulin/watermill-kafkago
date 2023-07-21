@@ -7,7 +7,6 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/pubsub/tests"
 	"github.com/stretchr/testify/require"
-	"sync"
 	"testing"
 	"time"
 )
@@ -64,8 +63,6 @@ func TestPublisherSubscriber(t *testing.T) {
 func TestPublish(t *testing.T) {
 	pub, sub := newPubSub(t, DefaultMarshaler{}, "test")
 	require.NotNil(t, pub)
-	wg := sync.WaitGroup{}
-	wg.Add(1)
 	ch, err := sub.Subscribe(context.Background(), "test")
 	require.NoError(t, err)
 	go func() {
@@ -73,12 +70,13 @@ func TestPublish(t *testing.T) {
 			select {
 			case msg := <-ch:
 				fmt.Println(string(msg.Payload))
-				wg.Done()
+				if !msg.Ack() {
+					fmt.Println("msg ack failed")
+				}
 			}
 		}
 	}()
-	err = pub.Publish("test", message.NewMessage(watermill.NewULID(), message.Payload("helloworld")))
+	msg := message.NewMessage(watermill.NewULID(), message.Payload("hello world"))
+	err = pub.Publish("test", msg)
 	require.NoError(t, err)
-	wg.Wait()
-	fmt.Println("ok")
 }
