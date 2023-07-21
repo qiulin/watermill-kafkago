@@ -7,13 +7,14 @@ import (
 	"github.com/ThreeDotsLabs/watermill/message"
 	"github.com/ThreeDotsLabs/watermill/pubsub/tests"
 	"github.com/stretchr/testify/require"
+	"sync"
 	"testing"
 	"time"
 )
 
 func kafkaBrokers() []string {
 	//return []string{"kafka1:9091", "kafka2:9092", "kafka3:9093", "kafka4:9094", "kafka5:9095"}
-	return []string{"kafka1:9091"}
+	return []string{"redpanda-0:19092"}
 }
 
 func newPubSub(t *testing.T, marshaler MarshalerUnmarshaler, consumerGroup string) (message.Publisher, message.Subscriber) {
@@ -65,6 +66,8 @@ func TestPublish(t *testing.T) {
 	require.NotNil(t, pub)
 	ch, err := sub.Subscribe(context.Background(), "test")
 	require.NoError(t, err)
+	wg := sync.WaitGroup{}
+	wg.Add(1)
 	go func() {
 		for {
 			select {
@@ -73,10 +76,14 @@ func TestPublish(t *testing.T) {
 				if !msg.Ack() {
 					fmt.Println("msg ack failed")
 				}
+				wg.Done()
 			}
 		}
 	}()
 	msg := message.NewMessage(watermill.NewULID(), message.Payload("hello world"))
 	err = pub.Publish("test", msg)
 	require.NoError(t, err)
+	wg.Wait()
+	time.Sleep(2 * time.Second)
+	fmt.Println("ok")
 }
